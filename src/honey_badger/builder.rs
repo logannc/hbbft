@@ -69,7 +69,6 @@ where
             has_input: false,
             epochs: BTreeMap::new(),
             max_future_epochs: self.max_future_epochs as u64,
-            incoming_queue: BTreeMap::new(),
             rng: Box::new(self.rng.sub_rng()),
             subset_handling_strategy: self.subset_handling_strategy.clone(),
         }

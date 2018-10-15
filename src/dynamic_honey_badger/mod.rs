@@ -62,6 +62,8 @@ mod dynamic_honey_badger;
 mod error;
 mod votes;
 
+pub mod sender_queue;
+
 use crypto::{PublicKey, PublicKeySet, Signature};
 use rand::Rand;
 use std::collections::BTreeMap;
@@ -69,7 +71,7 @@ use std::collections::BTreeMap;
 use self::votes::{SignedVote, VoteCounter};
 use honey_badger::Message as HbMessage;
 use sync_key_gen::{Ack, Part, SyncKeyGen};
-use NodeIdT;
+use {Epoched, NodeIdT};
 
 pub use self::batch::Batch;
 pub use self::builder::DynamicHoneyBadgerBuilder;
@@ -111,19 +113,29 @@ pub enum Message<N: Rand> {
 }
 
 impl<N: Rand> Message<N> {
-    fn start_epoch(&self) -> u64 {
+    fn era(&self) -> u64 {
         match *self {
-            Message::HoneyBadger(epoch, _) => epoch,
-            Message::KeyGen(epoch, _, _) => epoch,
+            Message::HoneyBadger(era, _) => era,
+            Message::KeyGen(era, _, _) => era,
             Message::SignedVote(ref signed_vote) => signed_vote.era(),
         }
     }
+}
 
-    pub fn epoch(&self) -> u64 {
+/// Dynamic Honey Badger epoch. It consists of an era and an epoch of Honey Badger that started in
+/// that era. For messages originating from `DynamicHoneyBadger` as opposed to `HoneyBadger`, that
+/// HoneyBadger epoch is `None`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Epoch(pub(super) (u64, Option<u64>));
+
+impl<N: Rand> Epoched for Message<N> {
+    type Epoch = Epoch;
+
+    fn epoch(&self) -> Epoch {
         match *self {
-            Message::HoneyBadger(start_epoch, ref msg) => start_epoch + msg.epoch(),
-            Message::KeyGen(epoch, _, _) => epoch,
-            Message::SignedVote(ref signed_vote) => signed_vote.era(),
+            Message::HoneyBadger(era, ref msg) => Epoch((era, Some(msg.epoch()))),
+            Message::KeyGen(era, _, _) => Epoch((era, None)),
+            Message::SignedVote(ref signed_vote) => Epoch((signed_vote.era(), None)),
         }
     }
 }

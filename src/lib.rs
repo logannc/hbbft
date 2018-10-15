@@ -157,4 +157,4 @@ pub mod util;
 pub use crypto::pairing;
 pub use messaging::{SourcedMessage, Target, TargetedMessage};
 pub use network_info::NetworkInfo;
-pub use traits::{Contribution, DistAlgorithm, Message, NodeIdT, Step};
+pub use traits::{Contribution, DistAlgorithm, Epoched, Message, NodeIdT, Step};

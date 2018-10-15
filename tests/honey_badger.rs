@@ -17,21 +17,23 @@ extern crate threshold_crypto as crypto;
 mod network;
 
 use std::collections::BTreeMap;
+use std::iter;
 use std::sync::Arc;
 
 use itertools::Itertools;
 use rand::Rng;
 
-use hbbft::honey_badger::{self, Batch, HoneyBadger, MessageContent};
+use hbbft::honey_badger::sender_queue::{self, SenderQueue};
+use hbbft::honey_badger::{Batch, HoneyBadger, MessageContent};
 use hbbft::transaction_queue::TransactionQueue;
-use hbbft::{threshold_decryption, NetworkInfo, Target, TargetedMessage};
+use hbbft::{threshold_decryption, Epoched, NetworkInfo, Target, TargetedMessage};
 
 use network::{
     Adversary, MessageScheduler, MessageWithSender, NodeId, RandomAdversary, SilentAdversary,
     TestNetwork, TestNode,
 };
 
-type UsizeHoneyBadger = HoneyBadger<Vec<usize>, NodeId>;
+type UsizeHoneyBadger = SenderQueue<Vec<usize>, NodeId>;
 
 /// An adversary whose nodes only send messages with incorrect decryption shares.
 pub struct FaultyShareAdversary {
@@ -68,7 +70,7 @@ impl Adversary<UsizeHoneyBadger> for FaultyShareAdversary {
     fn push_message(
         &mut self,
         sender_id: NodeId,
-        msg: TargetedMessage<honey_badger::Message<NodeId>, NodeId>,
+        msg: TargetedMessage<sender_queue::Message<NodeId>, NodeId>,
     ) {
         let NodeId(sender_id) = sender_id;
         if sender_id < self.num_good {
@@ -108,10 +110,12 @@ impl Adversary<UsizeHoneyBadger> for FaultyShareAdversary {
                         outgoing.push(MessageWithSender::new(
                             NodeId(sender_id),
                             Target::All.message(
-                                MessageContent::DecryptionShare {
-                                    proposer_id: NodeId(proposer_id),
-                                    share: threshold_decryption::Message(share.clone()),
-                                }.with_epoch(*epoch),
+                                sender_queue::MessageContent::Algo(
+                                    MessageContent::DecryptionShare {
+                                        proposer_id: NodeId(proposer_id),
+                                        share: threshold_decryption::Message(share.clone()),
+                                    },
+                                ).with_epoch(*epoch),
                             ),
                         ))
                     }
@@ -144,7 +148,7 @@ where
         let input_ids: Vec<_> = network
             .nodes
             .iter()
-            .filter(|(_, node)| !node.instance().has_input())
+            .filter(|(_, node)| !node.instance().algo().has_input())
             .map(|(id, _)| *id)
             .collect();
         if let Some(id) = rng.choose(&input_ids) {
@@ -183,8 +187,13 @@ where
     }
 }
 
-fn new_honey_badger(netinfo: Arc<NetworkInfo<NodeId>>) -> UsizeHoneyBadger {
-    HoneyBadger::builder(netinfo).build()
+fn new_honey_badger(
+    netinfo: Arc<NetworkInfo<NodeId>>,
+) -> (UsizeHoneyBadger, sender_queue::Step<Vec<usize>, NodeId>) {
+    let observer = NodeId(netinfo.num_nodes());
+    SenderQueue::builder(HoneyBadger::builder(netinfo).build())
+        .observers(iter::once(observer))
+        .build()
 }
 
 fn test_honey_badger_different_sizes<A, F>(new_adversary: F, num_txs: usize)
@@ -205,7 +214,8 @@ where
             num_good_nodes, num_adv_nodes
         );
         let adversary = |adv_nodes| new_adversary(num_good_nodes, num_adv_nodes, adv_nodes);
-        let network = TestNetwork::new(num_good_nodes, num_adv_nodes, adversary, new_honey_badger);
+        let network =
+            TestNetwork::new_with_step(num_good_nodes, num_adv_nodes, adversary, new_honey_badger);
         test_honey_badger(network, num_txs);
     }
 }

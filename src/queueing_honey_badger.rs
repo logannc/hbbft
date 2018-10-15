@@ -30,7 +30,8 @@ use failure::{Backtrace, Context, Fail};
 use rand::{Rand, Rng};
 use serde::{Deserialize, Serialize};
 
-use dynamic_honey_badger::{self, Batch as DhbBatch, DynamicHoneyBadger, Message};
+use dynamic_honey_badger::sender_queue::{Message, SenderQueue};
+use dynamic_honey_badger::{self, Batch as DhbBatch};
 use transaction_queue::TransactionQueue;
 use {Contribution, DistAlgorithm, NodeIdT};
 
@@ -95,7 +96,7 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 /// `QueueingHoneyBadger`.
 pub struct QueueingHoneyBadgerBuilder<T, N: Rand, Q> {
     /// Shared network data.
-    dyn_hb: DynamicHoneyBadger<Vec<T>, N>,
+    dyn_hb: SenderQueue<Vec<T>, N>,
     /// The target number of transactions to be included in each batch.
     batch_size: usize,
     /// The queue of pending transactions that haven't been output in a batch yet.
@@ -115,7 +116,7 @@ where
     /// keys specified by `netinfo`.
     // TODO: Make it easier to build a `QueueingHoneyBadger` with a `JoinPlan`. Handle `Step`
     // conversion internally.
-    pub fn new(dyn_hb: DynamicHoneyBadger<Vec<T>, N>) -> Self {
+    pub fn new(dyn_hb: SenderQueue<Vec<T>, N>) -> Self {
         // TODO: Use the defaults from `HoneyBadgerBuilder`.
         QueueingHoneyBadgerBuilder {
             dyn_hb,
@@ -181,8 +182,8 @@ where
 {
     /// The target number of transactions to be included in each batch.
     batch_size: usize,
-    /// The internal `DynamicHoneyBadger` instance.
-    dyn_hb: DynamicHoneyBadger<Vec<T>, N>,
+    /// The internal managed `DynamicHoneyBadger` instance.
+    dyn_hb: SenderQueue<Vec<T>, N>,
     /// The queue of pending transactions that haven't been output in a batch yet.
     queue: Q,
     /// Random number generator used for choosing transactions from the queue.
@@ -267,12 +268,12 @@ where
 {
     /// Returns a new `QueueingHoneyBadgerBuilder` configured to use the node IDs and cryptographic
     /// keys specified by `netinfo`.
-    pub fn builder(dyn_hb: DynamicHoneyBadger<Vec<T>, N>) -> QueueingHoneyBadgerBuilder<T, N, Q> {
+    pub fn builder(dyn_hb: SenderQueue<Vec<T>, N>) -> QueueingHoneyBadgerBuilder<T, N, Q> {
         QueueingHoneyBadgerBuilder::new(dyn_hb)
     }
 
-    /// Returns a reference to the internal `DynamicHoneyBadger` instance.
-    pub fn dyn_hb(&self) -> &DynamicHoneyBadger<Vec<T>, N> {
+    /// Returns a reference to the internal managed `DynamicHoneyBadger` instance.
+    pub fn dyn_hb(&self) -> &SenderQueue<Vec<T>, N> {
         &self.dyn_hb
     }
 
@@ -280,17 +281,20 @@ where
     /// previous epoch has completed and we have either pending transactions or we are required to
     /// make a proposal to avoid stalling the network.
     fn can_propose(&self) -> bool {
-        if self.dyn_hb.has_input() {
+        if self.dyn_hb.algo().has_input() {
             return false; // Previous epoch is still in progress.
         }
-        !self.queue.is_empty() || self.dyn_hb.should_propose()
+        !self.queue.is_empty() || self.dyn_hb.algo().should_propose()
     }
 
     /// Initiates the next epoch by proposing a batch from the queue.
     fn propose(&mut self) -> Result<Step<T, N, Q>> {
         let mut step = Step::default();
         while self.can_propose() {
-            let amount = cmp::max(1, self.batch_size / self.dyn_hb.netinfo().num_nodes());
+            let amount = cmp::max(
+                1,
+                self.batch_size / self.dyn_hb.algo().netinfo().num_nodes(),
+            );
             let proposal = self.queue.choose(&mut self.rng, amount, self.batch_size);
             step.extend(
                 self.dyn_hb

@@ -21,6 +21,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 use rand::{Isaac64Rng, Rng};
 
+use hbbft::dynamic_honey_badger::sender_queue::SenderQueue;
 use hbbft::dynamic_honey_badger::DynamicHoneyBadger;
 use hbbft::queueing_honey_badger::{Batch, Change, ChangeState, Input, QueueingHoneyBadger, Step};
 use hbbft::NetworkInfo;
@@ -76,6 +77,7 @@ where
             let pk = network.nodes[&NodeId(0)]
                 .instance()
                 .dyn_hb()
+                .algo()
                 .netinfo()
                 .secret_key()
                 .public_key();
@@ -89,11 +91,13 @@ where
 // Allow passing `netinfo` by value. `TestNetwork` expects this function signature.
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 fn new_queueing_hb(netinfo: Arc<NetworkInfo<NodeId>>) -> (QHB, Step<usize, NodeId, Vec<usize>>) {
-    let dyn_hb = DynamicHoneyBadger::builder().build((*netinfo).clone());
+    let (dhb, dhb_step) =
+        SenderQueue::builder(DynamicHoneyBadger::builder().build((*netinfo).clone())).build();
     let rng = rand::thread_rng().gen::<Isaac64Rng>();
-    QueueingHoneyBadger::builder(dyn_hb)
-        .batch_size(3)
-        .build(rng)
+    let (qhb, qhb_step) = QueueingHoneyBadger::builder(dhb).batch_size(3).build(rng);
+    let mut step = dhb_step.convert();
+    step.extend(qhb_step);
+    (qhb, step)
 }
 
 fn test_queueing_honey_badger_different_sizes<A, F>(new_adversary: F, num_txs: usize)

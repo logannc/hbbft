@@ -87,12 +87,11 @@ where
         DynamicHoneyBadger {
             netinfo,
             max_future_epochs,
-            start_epoch: 0,
+            era: 0,
             vote_counter: VoteCounter::new(arc_netinfo, 0),
             key_gen_msg_buffer: Vec::new(),
             honey_badger,
             key_gen_state: None,
-            incoming_queue: Vec::new(),
             rng: Box::new(rng.sub_rng()),
         }
     }
@@ -130,12 +129,11 @@ where
         let mut dhb = DynamicHoneyBadger {
             netinfo,
             max_future_epochs: self.max_future_epochs,
-            start_epoch: join_plan.epoch,
+            era: join_plan.epoch,
             vote_counter: VoteCounter::new(arc_netinfo, join_plan.epoch),
             key_gen_msg_buffer: Vec::new(),
             honey_badger,
             key_gen_state: None,
-            incoming_queue: Vec::new(),
             rng: Box::new(self.rng.sub_rng()),
         };
         let step = match join_plan.change {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use super::{ChangeState, JoinPlan};
+use super::{ChangeState, Epoch, JoinPlan};
 use {NetworkInfo, NodeIdT};
 
 /// A batch of transactions the algorithm has output.
@@ -11,6 +11,8 @@ use {NetworkInfo, NodeIdT};
 pub struct Batch<C, N> {
     /// The sequence number: there is exactly one batch in each epoch.
     pub(super) epoch: u64,
+    /// The next `DynamicHoneyBadger` epoch.
+    pub(super) next_epoch: Epoch,
     /// The user contributions committed in this epoch.
     pub(super) contributions: BTreeMap<N, C>,
     /// The current state of adding or removing a node: whether any is in progress, or completed

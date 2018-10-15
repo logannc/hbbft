@@ -24,6 +24,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use signifix::{metric, TryFrom};
 
+use hbbft::dynamic_honey_badger::sender_queue::SenderQueue;
 use hbbft::dynamic_honey_badger::DynamicHoneyBadger;
 use hbbft::queueing_honey_badger::{Batch, QueueingHoneyBadger};
 use hbbft::{DistAlgorithm, NetworkInfo, Step, Target};
@@ -436,11 +437,15 @@ fn main() {
         .map(|_| Transaction::new(args.flag_tx_size))
         .collect();
     let new_honey_badger = |netinfo: NetworkInfo<NodeId>| {
-        let dyn_hb = DynamicHoneyBadger::builder().build(netinfo);
-        QueueingHoneyBadger::builder(dyn_hb)
+        let (dhb, dhb_step) =
+            SenderQueue::builder(DynamicHoneyBadger::builder().build(netinfo)).build();
+        let (qhb, qhb_step) = QueueingHoneyBadger::builder(dhb)
             .batch_size(args.flag_b)
             .build_with_transactions(txs.clone(), rand::thread_rng().gen::<Isaac64Rng>())
-            .expect("instantiate QueueingHoneyBadger")
+            .expect("instantiate QueueingHoneyBadger");
+        let mut step = dhb_step.convert();
+        step.extend(qhb_step);
+        (qhb, step)
     };
     let hw_quality = HwQuality {
         latency: Duration::from_millis(args.flag_lag),

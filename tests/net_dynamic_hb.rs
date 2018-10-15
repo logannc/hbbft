@@ -10,6 +10,7 @@ pub mod net;
 
 use std::{collections, time};
 
+use hbbft::dynamic_honey_badger::sender_queue::SenderQueue;
 use hbbft::dynamic_honey_badger::{Change, ChangeState, DynamicHoneyBadger, Input};
 use hbbft::DistAlgorithm;
 use net::proptest::{gen_seed, NetworkDimension, TestRng, TestRngSeed};
@@ -101,11 +102,12 @@ fn do_drop_and_readd(cfg: TestConfig) {
         .time_limit(time::Duration::from_secs(30 * cfg.dimension.size() as u64))
         // Ensure runs are reproducible.
         .rng(rng.gen::<TestRng>())
-        .using(move |node| {
+        .using_step(move |node| {
             println!("Constructing new dynamic honey badger node #{}", node.id);
-            DynamicHoneyBadger::builder()
-                .rng(node.rng)
-                .build(node.netinfo)
+            SenderQueue::builder(DynamicHoneyBadger::builder()
+                                 .rng(node.rng)
+                                 .build(node.netinfo))
+                .build()
         }).build()
         .expect("could not construct test network");
 
@@ -164,6 +166,7 @@ fn do_drop_and_readd(cfg: TestConfig) {
                     // Now we can add the node again. Public keys will be reused.
                     let pk = net[*pivot_node_id]
                         .algorithm()
+                        .algo()
                         .netinfo()
                         .secret_key()
                         .public_key();
