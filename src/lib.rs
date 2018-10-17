@@ -148,6 +148,7 @@ pub mod dynamic_honey_badger;
 pub mod fault_log;
 pub mod honey_badger;
 pub mod queueing_honey_badger;
+pub mod sender_queue;
 pub mod subset;
 pub mod sync_key_gen;
 pub mod threshold_decryption;

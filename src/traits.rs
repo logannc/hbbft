@@ -6,6 +6,7 @@ use std::hash::Hash;
 use std::iter::once;
 
 use failure::Fail;
+use serde::{Deserialize, Serialize};
 
 use fault_log::{Fault, FaultLog};
 use {Target, TargetedMessage};
@@ -170,7 +171,18 @@ where
 /// notion of _epoch_. This interface summarizes the properties that are essential for the message
 /// sender queue.
 pub trait Epoched {
-    type Epoch: Clone + Copy + Eq + Ord;
+    type Epoch: Clone
+        + Copy
+        + Debug
+        + Default
+        + Eq
+        + Ord
+        + PartialEq
+        + PartialOrd
+        + Send
+        + Sync
+        + Serialize
+        + for<'r> Deserialize<'r>;
 
     /// Returns the object's epoch number.
     fn epoch(&self) -> Self::Epoch;
